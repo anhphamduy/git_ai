@@ -48,7 +48,11 @@ fn main() {
                 .expect("Failed to run git diff");
 
             if let Ok(s) = std::str::from_utf8(&output.stdout) {
-                println!("As a string: {}", s);
+                if s.trim().is_empty() {
+                    println!("Nothing to be committed");
+                } else {
+                    println!("As a string: {}", s);
+                }
             }
             println!("commit was used, name is: {:?}", args.message)
         }
