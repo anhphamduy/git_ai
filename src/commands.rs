@@ -108,10 +108,14 @@ impl GitAICommandExecutor {
     }
 
     async fn execute_commit(args: &CommitArgs) -> Result<(), Box<dyn std::error::Error>> {
-        let output = Command::new("git")
-            .arg("diff")
-            .output()
-            .expect("Failed to run git diff");
+        let mut command = Command::new("git");
+        command.arg("diff");
+
+        if args.name_only {
+            command.arg("--name-only");
+        }
+
+        let output = command.output().expect("Failed to run git diff");
 
         if let Ok(s) = std::str::from_utf8(&output.stdout) {
             if s.trim().is_empty() {
@@ -125,7 +129,7 @@ impl GitAICommandExecutor {
                     s,
                     COMMIT_MESSAGE_TEMPLATE
                 );
-                
+
                 let response = helper.generate_message(&message).await?;
                 let response = textwrap::wrap(&response, 72).join("\n");
                 println!("{}", response);
