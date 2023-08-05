@@ -14,6 +14,8 @@ pub enum Commands {
     Commit(CommitArgs),
     /// Suggest a PR template
     PR(PRArgs),
+    /// Setup the tool
+    Init,
 }
 
 #[derive(Args, Debug)]
