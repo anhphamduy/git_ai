@@ -2,16 +2,18 @@ mod cli;
 mod commands;
 
 use crate::cli::Cli;
-use crate::commands::execute_command;
+use crate::commands::GitAICommandExecutor;
 use clap::Parser;
 use tokio;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>>  {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(command) => execute_command(command).await,
+        Some(command) => GitAICommandExecutor::execute_command(command).await?,
         None => println!("Default subcommand"),
     }
+
+    Ok(())
 }
