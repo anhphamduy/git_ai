@@ -2,16 +2,9 @@
 
 The Intelligent Git Generator (also known as `git_ai`) is an intuitive AI tool designed to streamline your git version control system. It not only provides intelligent suggestions for commit messages but also assists in creating comprehensive PR templates.
 
-## Table of Contents
-
-- [Installation](#installation)
-- [Usage](#usage)
-- [Commands](#commands)
-
 ## Installation
 
 The Intelligent Git Generator is written in Rust. You can either build from source or download the binary.
-
 
 ### Downloading the Binary
 
