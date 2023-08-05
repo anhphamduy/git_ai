@@ -63,15 +63,15 @@ dependencies exist.
 
 pub struct GitAICommandExecutor;
 
-pub struct OpenAIHelper {
+pub struct ChatConversation {
     client: Client<OpenAIConfig>,
     messages: Vec<ChatCompletionRequestMessage>,
 }
 
-impl OpenAIHelper {
+impl ChatConversation {
     pub fn new(api_key: String) -> Self {
         let client = Client::with_config(OpenAIConfig::new().with_api_key(api_key));
-        OpenAIHelper {
+        ChatConversation {
             client,
             messages: Vec::new(),
         }
@@ -89,7 +89,7 @@ impl OpenAIHelper {
 
         let request = CreateChatCompletionRequestArgs::default()
             .model("gpt-4")
-            .messages(self.messages.clone())
+            .messages(&*self.messages)
             .build()?;
 
         let response = self.client.chat().create(request).await?;
@@ -146,7 +146,7 @@ impl GitAICommandExecutor {
             println!("Nothing to be committed");
         } else {
             let api_key = Self::get_open_api_key();
-            let mut helper = OpenAIHelper::new(api_key);
+            let mut conversation = ChatConversation::new(api_key);
             let mut message = format!(
                 "Create me a commit message for these changes:\nThe context is: {}\n{}{}",
                 args.message.as_ref().unwrap_or(&"".to_string()),
@@ -155,7 +155,7 @@ impl GitAICommandExecutor {
             );
 
             loop {
-                let response = helper.generate_message(&message).await?;
+                let response = conversation.generate_message(&message).await?;
                 let response = textwrap::wrap(&response, 72).join("\n");
                 println!("{}", response);
 
@@ -222,8 +222,8 @@ impl GitAICommandExecutor {
         message += &format!("Changes are:\n{}{}", result, PR_TEMPLATE);
 
         let api_key = Self::get_open_api_key();
-        let mut helper = OpenAIHelper::new(api_key);
-        let response = helper.generate_message(&message).await?;
+        let mut conversation = ChatConversation::new(api_key);
+        let response = conversation.generate_message(&message).await?;
         let response = textwrap::wrap(&response, 72).join("\n");
         println!("{}", response);
 
