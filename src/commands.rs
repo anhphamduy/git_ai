@@ -103,7 +103,7 @@ impl ChatConversation {
 
         let message = ChatCompletionRequestMessageArgs::default()
             .role(Role::Assistant)
-            .content(content.clone())
+            .content(response.clone())
             .build()?;
         self.messages.push(message);
 
