@@ -1,5 +1,6 @@
 mod cli;
 mod commands;
+mod config;
 
 use crate::cli::Cli;
 use crate::commands::GitAICommandExecutor;

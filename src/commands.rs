@@ -7,11 +7,9 @@ use async_openai::{
     },
     Client,
 };
-use ini::Ini;
-use std::env;
 use std::io::{self, Write};
-use std::path::Path;
 use std::process::Command;
+use crate::config::ConfigManager; 
 
 const COMMIT_MESSAGE_TEMPLATE: &str = r#"
 Commit Message Format
@@ -69,8 +67,8 @@ pub struct ChatConversation {
 }
 
 impl ChatConversation {
-    pub fn new(api_key: String) -> Self {
-        let client = Client::with_config(OpenAIConfig::new().with_api_key(api_key));
+    pub fn new() -> Self {
+        let client = Client::with_config(OpenAIConfig::new().with_api_key(ConfigManager::get_open_api_key()));
         ChatConversation {
             client,
             messages: Vec::new(),
@@ -145,8 +143,7 @@ impl GitAICommandExecutor {
         if output.trim().is_empty() {
             println!("Nothing to be committed");
         } else {
-            let api_key = Self::get_open_api_key();
-            let mut conversation = ChatConversation::new(api_key);
+            let mut conversation = ChatConversation::new();
             let mut message = format!(
                 "Create me a commit message for these changes:\nThe context is: {}\n{}{}",
                 args.message.as_ref().unwrap_or(&"".to_string()),
@@ -172,28 +169,7 @@ impl GitAICommandExecutor {
     }
 
     fn execute_init() {
-        print!("Please enter your OpenAI API key: ");
-        let _ = io::stdout().flush(); // Flushes the stdout buffer to ensure the printed text is displayed before reading input
-
-        let mut api_key = String::new();
-        let _ = io::stdin().read_line(&mut api_key);
-        api_key = api_key.trim().to_string(); // Removes any trailing newline characters
-
-        // Getting the home directory
-        let home = env::var("HOME").unwrap();
-
-        // Constructing the path to the config file
-        let config_path = Path::new(&home).join("git_ai.ini");
-
-        // Creating an INI file and setting the API key
-        let mut conf = Ini::new();
-        conf.with_section(None::<String>)
-            .set("OPENAI_API_KEY", api_key);
-
-        // Writing the INI file to disk
-        conf.write_to_file(&config_path).unwrap();
-
-        println!("{} has been updated", config_path.display());
+        ConfigManager::execute_init();
     }
 
     async fn execute_pr(args: &PRArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -221,8 +197,7 @@ impl GitAICommandExecutor {
 
         message += &format!("Changes are:\n{}{}", result, PR_TEMPLATE);
 
-        let api_key = Self::get_open_api_key();
-        let mut conversation = ChatConversation::new(api_key);
+        let mut conversation = ChatConversation::new();
         let response = conversation.generate_message(&message).await?;
         let response = textwrap::wrap(&response, 72).join("\n");
         println!("{}", response);
@@ -230,27 +205,4 @@ impl GitAICommandExecutor {
         Ok(())
     }
 
-    fn get_open_api_key() -> String {
-        // Getting the home directory
-        let home = env::var("HOME").unwrap();
-
-        // Constructing the path to the config file
-        let config_path = Path::new(&home).join("git_ai.ini");
-
-        // Trying to load the INI file
-        if let Ok(conf) = Ini::load_from_file(&config_path) {
-            if let Some(api_key) = conf.get_from(None::<String>, "OPENAI_API_KEY") {
-                return api_key.to_string();
-            }
-        }
-
-        // If the code reaches here, the API key was not found, so call execute_init
-        Self::execute_init();
-
-        // Then read the API key from the file again, as it should now exist
-        let conf = Ini::load_from_file(&config_path).unwrap();
-        conf.get_from(None::<String>, "OPENAI_API_KEY")
-            .unwrap()
-            .to_string()
-    }
 }
