@@ -169,7 +169,7 @@ impl GitAICommandExecutor {
     }
 
     fn execute_init() {
-        ConfigManager::execute_init();
+        ConfigManager::init();
     }
 
     async fn execute_pr(args: &PRArgs) -> Result<(), Box<dyn std::error::Error>> {
