@@ -18,7 +18,7 @@ Format:
 <body>
 
 <footer>
-Type: This refers to the kind of change that you've made. Common types include:
+Type: This refers to the kind of change that you've made. Options include:
 - feat: A new feature
 - fix: A bug fix
 - docs: Documentation only changes
@@ -80,7 +80,7 @@ impl OpenAIHelper {
             .build()?;
 
         let request = CreateChatCompletionRequestArgs::default()
-            .model("gpt-3.5-turbo-16k")
+            .model("gpt-4")
             .messages([message])
             .build()?;
 
@@ -101,7 +101,7 @@ impl GitAICommandExecutor {
     pub async fn execute_command(command: &Commands) -> Result<(), Box<dyn std::error::Error>> {
         match command {
             Commands::Commit(args) => Self::execute_commit(args).await?,
-            Commands::PR(args) => Self::execute_pr(args),
+            Commands::PR(args) => Self::execute_pr(args).await?,
             Commands::Init => Self::execute_init(),
         }
         Ok(())
@@ -116,24 +116,22 @@ impl GitAICommandExecutor {
         }
 
         let output = command.output().expect("Failed to run git diff");
+        let output = std::str::from_utf8(&output.stdout).unwrap().to_string();
+        if output.trim().is_empty() {
+            println!("Nothing to be committed");
+        } else {
+            let api_key = Self::get_open_api_key();
+            let helper = OpenAIHelper::new(api_key);
+            let message = format!(
+                "Create me a commit message for these changes:\nThe context is: {}\n{}{}",
+                args.message.as_ref().unwrap_or(&"".to_string()),
+                output,
+                COMMIT_MESSAGE_TEMPLATE
+            );
 
-        if let Ok(s) = std::str::from_utf8(&output.stdout) {
-            if s.trim().is_empty() {
-                println!("Nothing to be committed");
-            } else {
-                let api_key = Self::get_open_api_key();
-                let helper = OpenAIHelper::new(api_key);
-                let message = format!(
-                    "Create me a commit message for these changes:\nThe context is: {}\n{}{}",
-                    args.message.as_ref().unwrap_or(&"".to_string()),
-                    s,
-                    COMMIT_MESSAGE_TEMPLATE
-                );
-
-                let response = helper.generate_message(&message).await?;
-                let response = textwrap::wrap(&response, 72).join("\n");
-                println!("{}", response);
-            }
+            let response = helper.generate_message(&message).await?;
+            let response = textwrap::wrap(&response, 72).join("\n");
+            println!("{}", response);
         }
         Ok(())
     }
@@ -163,6 +161,40 @@ impl GitAICommandExecutor {
         println!("{} has been updated", config_path.display());
     }
 
+    async fn execute_pr(args: &PRArgs) -> Result<(), Box<dyn std::error::Error>> {
+        let branch = &args.branch;
+
+        let output = Command::new("git")
+            .arg("log")
+            .arg(format!("{}..HEAD", branch))
+            .output()
+            .expect("Failed to execute git log command");
+        let result = std::str::from_utf8(&output.stdout).unwrap().to_string();
+
+        let mut message = format!(
+            "Create me a PR for these changes:\nThe context is: {}\nAll the commit messages are:\n{}",  
+            args.message.as_ref().unwrap_or(&"".to_string()), 
+            result
+        );
+
+        let output = Command::new("git")
+            .arg("diff")
+            .arg(branch)
+            .output()
+            .expect("Failed to execute git diff command");
+        let result = std::str::from_utf8(&output.stdout).unwrap().to_string();
+
+        message += &format!("Changes are:\n{}{}", result, PR_TEMPLATE);
+
+        let api_key = Self::get_open_api_key();
+        let helper = OpenAIHelper::new(api_key);
+        let response = helper.generate_message(&message).await?;
+        let response = textwrap::wrap(&response, 72).join("\n");
+        println!("{}", response);
+
+        Ok(())
+    }
+
     fn get_open_api_key() -> String {
         // Getting the home directory
         let home = env::var("HOME").unwrap();
@@ -185,12 +217,5 @@ impl GitAICommandExecutor {
         conf.get_from(None::<String>, "OPENAI_API_KEY")
             .unwrap()
             .to_string()
-    }
-
-    fn execute_pr(args: &PRArgs) {
-        let message = &args.message;
-        let branch = &args.branch;
-        println!("pr was used, name is: {:?}", message);
-        println!("pr was used, name is: {:?}", branch);
     }
 }
