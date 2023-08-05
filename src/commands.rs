@@ -116,7 +116,16 @@ impl GitAICommandExecutor {
         }
 
         let output = command.output().expect("Failed to run git diff");
-        let output = std::str::from_utf8(&output.stdout).unwrap().to_string();
+        let mut output = std::str::from_utf8(&output.stdout).unwrap().to_string();
+        if output.trim().is_empty() {
+            // Re-run the command with the `--staged` option if the output is empty
+            command.arg("--staged");
+            let output_staged = command.output().expect("Failed to run git diff --staged");
+            output = std::str::from_utf8(&output_staged.stdout)
+                .unwrap()
+                .to_string();
+        }
+
         if output.trim().is_empty() {
             println!("Nothing to be committed");
         } else {
