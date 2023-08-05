@@ -7,7 +7,6 @@ The Intelligent Git Generator (also known as `git_ai`) is an intuitive AI tool d
 - [Installation](#installation)
 - [Usage](#usage)
 - [Commands](#commands)
-- [Options](#options)
 
 ## Installation
 
@@ -48,7 +47,7 @@ git_ai commit
 
 This will suggest a commit message based on your changes.
 
-## Commands
+### Commands
 
 The Intelligent Git Generator supports the following commands:
 
@@ -56,9 +55,9 @@ The Intelligent Git Generator supports the following commands:
 2. `pr` - Generates a PR template for your current branch.
 3. `init` - Sets up the tool in your local environment.
 
-## Subcommand Usage
+### Subcommand Usage
 
-### commit
+#### commit
 
 Use the `commit` subcommand to get suggestions for commit messages. 
 
@@ -73,7 +72,7 @@ Options:
 - `-m, --message <MESSAGE>` - Provides the context for the commit.
 - `-n, --name-only` - Suggests a commit message based only on the names of the changed files.
 
-### pr
+#### pr
 
 Use the `pr` subcommand to get a suggested PR template.
 
