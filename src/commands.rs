@@ -1,7 +1,10 @@
 use crate::cli::{Commands, CommitArgs, PRArgs};
 use async_openai::{
     config::OpenAIConfig,
-    types::{ChatCompletionRequestMessageArgs, CreateChatCompletionRequestArgs, Role},
+    types::{
+        ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs,
+        CreateChatCompletionRequestArgs, Role,
+    },
     Client,
 };
 use ini::Ini;
@@ -62,30 +65,35 @@ pub struct GitAICommandExecutor;
 
 pub struct OpenAIHelper {
     client: Client<OpenAIConfig>,
+    messages: Vec<ChatCompletionRequestMessage>,
 }
 
 impl OpenAIHelper {
     pub fn new(api_key: String) -> Self {
         let client = Client::with_config(OpenAIConfig::new().with_api_key(api_key));
-        OpenAIHelper { client }
+        OpenAIHelper {
+            client,
+            messages: Vec::new(),
+        }
     }
 
     pub async fn generate_message(
-        &self,
+        &mut self,
         content: &str,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let message = ChatCompletionRequestMessageArgs::default()
             .role(Role::User)
             .content(content)
             .build()?;
+        self.messages.push(message);
 
         let request = CreateChatCompletionRequestArgs::default()
             .model("gpt-4")
-            .messages([message])
+            .messages(self.messages.clone())
             .build()?;
 
         let response = self.client.chat().create(request).await?;
-        Ok(response
+        let response = response
             .choices
             .first()
             .unwrap()
@@ -93,7 +101,15 @@ impl OpenAIHelper {
             .content
             .as_ref()
             .unwrap()
-            .clone())
+            .clone();
+
+        let message = ChatCompletionRequestMessageArgs::default()
+            .role(Role::Assistant)
+            .content(content.clone())
+            .build()?;
+        self.messages.push(message);
+
+        Ok(response)
     }
 }
 
@@ -130,17 +146,27 @@ impl GitAICommandExecutor {
             println!("Nothing to be committed");
         } else {
             let api_key = Self::get_open_api_key();
-            let helper = OpenAIHelper::new(api_key);
-            let message = format!(
+            let mut helper = OpenAIHelper::new(api_key);
+            let mut message = format!(
                 "Create me a commit message for these changes:\nThe context is: {}\n{}{}",
                 args.message.as_ref().unwrap_or(&"".to_string()),
                 output,
                 COMMIT_MESSAGE_TEMPLATE
             );
 
-            let response = helper.generate_message(&message).await?;
-            let response = textwrap::wrap(&response, 72).join("\n");
-            println!("{}", response);
+            loop {
+                let response = helper.generate_message(&message).await?;
+                let response = textwrap::wrap(&response, 72).join("\n");
+                println!("{}", response);
+
+                // Prompt the user for another input
+                print!("Anything you want to edit? ");
+                io::stdout().flush().unwrap(); // Ensure the prompt is immediately visible
+                message.clear();
+                io::stdin().read_line(&mut message).unwrap();
+
+                println!("You entered: {}", message.trim());
+            }
         }
         Ok(())
     }
@@ -196,7 +222,7 @@ impl GitAICommandExecutor {
         message += &format!("Changes are:\n{}{}", result, PR_TEMPLATE);
 
         let api_key = Self::get_open_api_key();
-        let helper = OpenAIHelper::new(api_key);
+        let mut helper = OpenAIHelper::new(api_key);
         let response = helper.generate_message(&message).await?;
         let response = textwrap::wrap(&response, 72).join("\n");
         println!("{}", response);
