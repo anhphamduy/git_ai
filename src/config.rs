@@ -1,6 +1,6 @@
 use ini::Ini;
 use std::env;
-use std::io::stdin;
+use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 
 pub struct ConfigManager;
@@ -10,6 +10,7 @@ impl ConfigManager {
         print!("Please enter your OpenAI API key: ");
 
         let mut api_key = String::new();
+        stdout().flush().unwrap();
         let _ = stdin().read_line(&mut api_key);
         api_key = api_key.trim().to_string();
 
