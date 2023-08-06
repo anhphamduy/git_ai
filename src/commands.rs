@@ -161,8 +161,6 @@ impl GitAICommandExecutor {
                 io::stdout().flush().unwrap(); // Ensure the prompt is immediately visible
                 message.clear();
                 io::stdin().read_line(&mut message).unwrap();
-
-                println!("You entered: {}", message.trim());
             }
         }
         Ok(())
