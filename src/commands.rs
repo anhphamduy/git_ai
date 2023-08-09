@@ -1,4 +1,6 @@
 use crate::cli::{Commands, CommitArgs, PRArgs};
+use crate::config::ConfigManager;
+use async_openai::types::ChatCompletionFunctionsArgs;
 use async_openai::{
     config::OpenAIConfig,
     types::{
@@ -7,9 +9,9 @@ use async_openai::{
     },
     Client,
 };
+use serde_json::json;
 use std::io::{self, Write};
 use std::process::Command;
-use crate::config::ConfigManager; 
 
 const COMMIT_MESSAGE_TEMPLATE: &str = r#"
 Commit Message Format
@@ -68,7 +70,9 @@ pub struct ChatConversation {
 
 impl ChatConversation {
     pub fn new() -> Self {
-        let client = Client::with_config(OpenAIConfig::new().with_api_key(ConfigManager::get_open_api_key()));
+        let client = Client::with_config(
+            OpenAIConfig::new().with_api_key(ConfigManager::get_open_api_key()),
+        );
         ChatConversation {
             client,
             messages: Vec::new(),
@@ -88,26 +92,60 @@ impl ChatConversation {
         let request = CreateChatCompletionRequestArgs::default()
             .model("gpt-4")
             .messages(&*self.messages)
+            .functions([ChatCompletionFunctionsArgs::default()
+                .name("suggest_code_improvements")
+                .description("Get a list of improvements for the code changes")
+                .parameters(json!({
+                    "type": "object",
+                    "properties": {
+                        "improvements": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "severity": {
+                                        "type": "string",
+                                        "enum": ["high", "low", "medium"]
+                                    } ,
+                                    "code": {
+                                        "type": "string",
+                                        "description": "the piece of code to be fixed",
+                                    },
+                                    "reason": {
+                                        "type": "string",
+                                        "description": "reason for such suggestion",
+                                    }
+                                }
+                            },
+                            "description": "A list of code improvements",
+                        },
+                    },
+                    "required": ["improvements"],
+                }))
+                .build()?])
+            .function_call("auto")
             .build()?;
 
         let response = self.client.chat().create(request).await?;
-        let response = response
-            .choices
-            .first()
-            .unwrap()
-            .message
-            .content
-            .as_ref()
-            .unwrap()
-            .clone();
 
-        let message = ChatCompletionRequestMessageArgs::default()
-            .role(Role::Assistant)
-            .content(response.clone())
-            .build()?;
-        self.messages.push(message);
+        if let Some(content) = &response.choices.first().unwrap().message.content {
+            let message = ChatCompletionRequestMessageArgs::default()
+                .role(Role::Assistant)
+                .content(content.clone())
+                .build()?;
+            self.messages.push(message);
 
-        Ok(response)
+            Ok(content.clone())
+        } else {
+            if let Some(function_call) = &response.choices.first().unwrap().message.function_call {
+                let name = &function_call.name;
+                let arguments = &function_call.arguments;
+                println!("{}", name);
+                println!("{}", arguments);
+            }
+
+            Ok(String::from("Hello"))
+        }
     }
 }
 
@@ -163,6 +201,7 @@ impl GitAICommandExecutor {
                 io::stdin().read_line(&mut message).unwrap();
             }
         }
+
         Ok(())
     }
 
@@ -192,15 +231,12 @@ impl GitAICommandExecutor {
             .output()
             .expect("Failed to execute git diff command");
         let result = std::str::from_utf8(&output.stdout).unwrap().to_string();
-
         message += &format!("Changes are:\n{}{}", result, PR_TEMPLATE);
 
         let mut conversation = ChatConversation::new();
         let response = conversation.generate_message(&message).await?;
         let response = textwrap::wrap(&response, 72).join("\n");
         println!("{}", response);
-
         Ok(())
     }
-
 }
