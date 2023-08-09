@@ -9,6 +9,8 @@ use async_openai::{
     },
     Client,
 };
+use colored::Colorize;
+use serde::Deserialize;
 use serde_json::json;
 use std::io::{self, Write};
 use std::process::Command;
@@ -68,15 +70,56 @@ pub struct ChatConversation {
     messages: Vec<ChatCompletionRequestMessage>,
 }
 
+#[derive(Deserialize, Debug)]
+struct Improvement {
+    code: String,
+    reason: String,
+    severity: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Improvements {
+    improvements: Vec<Improvement>,
+}
+
+impl Improvements {
+    fn display(&self) {
+        for improvement in &self.improvements {
+            let color = match improvement.severity.as_str() {
+                "high" => "red",
+                "medium" => "yellow",
+                "low" => "green",
+                _ => "white",
+            };
+
+            println!("Severity: {}\n", improvement.severity.color(color));
+            println!("{}\n", improvement.code.color(color));
+            println!("{}\n", improvement.reason);
+            println!("------------------------------------");
+        }
+    }
+}
+
 impl ChatConversation {
     pub fn new() -> Self {
         let client = Client::with_config(
             OpenAIConfig::new().with_api_key(ConfigManager::get_open_api_key()),
         );
-        ChatConversation {
+
+        let system_message = ChatCompletionRequestMessageArgs::default()
+            .role(Role::System)
+            .content(String::from(""))
+            .build();
+        let mut conversation = ChatConversation {
             client,
             messages: Vec::new(),
+        };
+
+        if let Ok(message) = system_message {
+            conversation.messages.push(message);
         }
+
+        conversation
     }
 
     pub async fn generate_message(
@@ -139,9 +182,30 @@ impl ChatConversation {
         } else {
             if let Some(function_call) = &response.choices.first().unwrap().message.function_call {
                 let name = &function_call.name;
-                let arguments = &function_call.arguments;
-                println!("{}", name);
-                println!("{}", arguments);
+                if *name == "suggest_code_improvements" {
+                    let arguments = &function_call.arguments;
+
+                    let mut data: Improvements = serde_json::from_str(arguments.as_str())
+                        .expect("Error deserializing the JSON");
+                    data.improvements.sort_by(|a, b| {
+                        let rank_a = match a.severity.as_str() {
+                            "high" => 3,
+                            "medium" => 2,
+                            "low" => 1,
+                            _ => 0,
+                        };
+            
+                        let rank_b = match b.severity.as_str() {
+                            "high" => 3,
+                            "medium" => 2,
+                            "low" => 1,
+                            _ => 0,
+                        };
+            
+                        rank_b.cmp(&rank_a)
+                    });
+                    data.display();
+                }
             }
 
             Ok(String::from("Hello"))
@@ -153,6 +217,7 @@ impl GitAICommandExecutor {
     pub async fn execute_command(command: &Commands) -> Result<(), Box<dyn std::error::Error>> {
         match command {
             Commands::Commit(args) => Self::execute_commit(args).await?,
+
             Commands::PR(args) => Self::execute_pr(args).await?,
             Commands::Init => Self::execute_init(),
         }
