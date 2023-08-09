@@ -10,8 +10,9 @@ use async_openai::{
     Client,
 };
 use colored::Colorize;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::json;
+use std::fmt;
 use std::io::{self, Write};
 use std::process::Command;
 
@@ -70,11 +71,46 @@ pub struct ChatConversation {
     messages: Vec<ChatCompletionRequestMessage>,
 }
 
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Severity {
+    High,
+    Medium,
+    Low,
+}
+
+
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Write the corresponding string representation to the formatter
+        match self {
+            Severity::High => write!(f, "High"),
+            Severity::Medium => write!(f, "Medium"),
+            Severity::Low => write!(f, "Low"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Severity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        match s.to_lowercase().as_str() {
+            "high" => Ok(Severity::High),
+            "medium" => Ok(Severity::Medium),
+            "low" => Ok(Severity::Low),
+            _ => Err(serde::de::Error::custom("Unexpected severity value")),
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct Improvement {
     code: String,
     reason: String,
-    severity: String,
+    severity: Severity,
 }
 
 #[derive(Deserialize, Debug)]
@@ -85,14 +121,13 @@ struct Improvements {
 impl Improvements {
     fn display(&self) {
         for improvement in &self.improvements {
-            let color = match improvement.severity.as_str() {
-                "high" => "red",
-                "medium" => "yellow",
-                "low" => "green",
-                _ => "white",
+            let color = match improvement.severity {
+                Severity::High => "red",
+                Severity::Medium => "yellow",
+                Severity::Low => "green",
             };
 
-            println!("Severity: {}\n", improvement.severity.color(color));
+            println!("Severity: {}\n", improvement.severity.to_string().color(color));
             println!("{}\n", improvement.code.color(color));
             println!("{}\n", improvement.reason);
             println!("------------------------------------");
@@ -187,23 +222,7 @@ impl ChatConversation {
 
                     let mut data: Improvements = serde_json::from_str(arguments.as_str())
                         .expect("Error deserializing the JSON");
-                    data.improvements.sort_by(|a, b| {
-                        let rank_a = match a.severity.as_str() {
-                            "high" => 3,
-                            "medium" => 2,
-                            "low" => 1,
-                            _ => 0,
-                        };
-            
-                        let rank_b = match b.severity.as_str() {
-                            "high" => 3,
-                            "medium" => 2,
-                            "low" => 1,
-                            _ => 0,
-                        };
-            
-                        rank_b.cmp(&rank_a)
-                    });
+                    data.improvements.sort_by(|a, b| b.severity.cmp(&a.severity));
                     data.display();
                 }
             }
